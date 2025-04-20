@@ -29,17 +29,6 @@ func (f *FitFile) AddMessage(message encoding.EndianEncoder) error {
 	return nil
 }
 
-// func (f *FitFile) ToBytes(endian encoding.Endianness) ([]byte, error) {
-// 	buffer := new(bytes.Buffer)
-// 	for _, message := range f.messages {
-// 		err := message.Encode(buffer, endian)
-// 		if err != nil {
-// 			return nil, err
-// 		}
-// 	}
-// 	return buffer.Bytes(), nil
-// }
-
 func (f *FitFile) Encode(wr io.Writer, endianness encoding.Endianness) error {
 	// first encode all of the messages
 	buffer := new(bytes.Buffer)

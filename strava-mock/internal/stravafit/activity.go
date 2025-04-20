@@ -5,7 +5,6 @@ package stravafit
 import (
 	"fmt"
 	"math"
-	"os"
 	"time"
 
 	"github.com/renbou/jogmock/activities"
@@ -265,23 +264,6 @@ func (act *StravaActivity) writeHeader(file *fit.FitFile) error {
 	return nil
 }
 
-func appendToFile(filename string, data string) error {
-	// Open the file in append mode, create it if it doesn't exist
-	file, err := os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	// Write data to the file
-	_, err = file.WriteString(data)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
 func (act *StravaActivity) writeBody(file *fit.FitFile) error {
 	// add event message on start of activity
 	eventMessage, err := getEventMessageDefinition()
@@ -320,13 +302,7 @@ func (act *StravaActivity) writeBody(file *fit.FitFile) error {
 	if err := file.AddMessage(recordDistanceMessageDef); err != nil {
 		return err
 	}
-	filename := "Records.csv"
-	data := fmt.Sprintf("%s,%s,%s,%s\n", "#Records", "Running", "Generic", act.Activity.Start().Format("2006-01-02 15:04:05"))
-	appendToFile(filename, data)
-	data = fmt.Sprintf("%s,%s,%s,%s,%s,%s,%s,%s,%s\n", "Seconds", "Timestamp", "PositionLat", "PositionLong", "EnhancedAltitude", "EnhancedSpeed", "Distance", "HeartRate", "Cadence")
-	appendToFile(filename, data)
 	// add all records to file
-	var timestampStart int64 = fitEncodeTimestamp(act.Activity.Start())
 	for _, record := range act.Activity.Records() {
 		// add record normal data
 		recordMessageData, err := recordMessageDef.ConstructData(
@@ -349,11 +325,6 @@ func (act *StravaActivity) writeBody(file *fit.FitFile) error {
 		if err := file.AddMessage(recordDistanceMessageData); err != nil {
 			return err
 		}
-		data := fmt.Sprintf("%d,%d,%f,%f,%f,%f,%2f\n", fitEncodeTimestamp(record.Timestamp)-timestampStart,
-			fitEncodeTimestamp(record.Timestamp), record.Lat, record.Lon,
-			record.Altitude, record.Speed, fitEncodeDistanceM(record.Distance))
-
-		appendToFile(filename, data)
 	}
 
 	// add stop event to file

@@ -139,16 +139,16 @@ func strToTimestamp(val string) (time.Time, error) {
 	return t.Add(-time.Second * time.Duration(offset)), nil
 }
 
-func strIsTime(val string) error {
-	if val == "" {
-		return errors.New("input time as DD.MM.YYYY HH:MM:SS")
-	}
-	_, err := strToTimestamp(val)
-	if err != nil {
-		return errors.New("input time as DD.MM.YYYY HH:MM:SS, error: " + err.Error())
-	}
-	return err
-}
+// func strIsTime(val string) error {
+// 	if val == "" {
+// 		return errors.New("input time as DD.MM.YYYY HH:MM:SS")
+// 	}
+// 	_, err := strToTimestamp(val)
+// 	if err != nil {
+// 		return errors.New("input time as DD.MM.YYYY HH:MM:SS, error: " + err.Error())
+// 	}
+// 	return err
+// }
 
 const (
 	OkPrefix   = "[+]"
@@ -172,73 +172,6 @@ func NewActivityModel(config *UserConfig) *ActivityModel {
 			},
 			func(value interface{}) {
 				_, model.gpxFilePath = autoPromptBubble.UserExpand(value.(string))
-			},
-		},
-		modelStep{
-			&selectorBubble.Model{
-				Data:           []interface{}{"Run", "Ride"},
-				HeaderFunc:     selectorBubble.DefaultHeaderFuncWithAppend("Type:"),
-				SelectedFunc:   selectorBubble.DefaultSelectedFuncWithIndex("[%d]"),
-				UnSelectedFunc: selectorBubble.DefaultUnSelectedFuncWithIndex(" %d."),
-				FooterFunc: func(m selectorBubble.Model, obj interface{}, gdIndex int) string {
-					return ""
-				},
-				FinishedFunc: func(selected interface{}) string {
-					return bubblesCommon.FontColor(OkPrefix+" Type: ", selectorBubble.ColorFinished) +
-						fmt.Sprintln(selected)
-				},
-			},
-			func(value interface{}) {
-				text := value.(string)
-				var activityCfg *activityConfig
-				if text == "Run" {
-					model.options.Type = activities.RunActivity
-					activityCfg = model.config.RunActivityConfig
-				} else {
-					model.options.Type = activities.RideActivity
-					activityCfg = model.config.RideActivityConfig
-				}
-
-				if activityCfg != nil {
-					model.options.CommonSpeed = activityCfg.CommonSpeed
-					model.options.RareSpeed = activityCfg.RareSpeed
-					model.options.RareSpeedChance = activityCfg.RareSpeedChance
-					model.options.FadeDuration = time.Duration(activityCfg.FadeDuration) * time.Second
-					model.options.FadeFraction = activityCfg.FadeFraction
-				}
-			},
-		},
-		modelStep{
-			&promptBubble.Model{
-				Prompt:            bubblesCommon.FontColor("Name: ", promptBubble.ColorPrompt),
-				ValidateFunc:      promptBubble.VFNotBlank,
-				ValidateOkPrefix:  OkPrefix,
-				ValidateErrPrefix: ErrPrefix,
-			},
-			func(value interface{}) {
-				model.options.Name = value.(string)
-			},
-		},
-		modelStep{
-			&promptBubble.Model{
-				Prompt:            bubblesCommon.FontColor("Description: ", promptBubble.ColorPrompt),
-				ValidateOkPrefix:  OkPrefix,
-				ValidateErrPrefix: ErrPrefix,
-			},
-			func(value interface{}) {
-				model.options.Description = value.(string)
-			},
-		},
-		modelStep{
-			&promptBubble.Model{
-				Prompt: bubblesCommon.FontColor("Start time (DD.MM.YYYY HH:MM:SS): ",
-					promptBubble.ColorPrompt),
-				ValidateFunc:      strIsTime,
-				ValidateOkPrefix:  OkPrefix,
-				ValidateErrPrefix: ErrPrefix,
-			},
-			func(value interface{}) {
-				model.options.Start, _ = strToTimestamp(value.(string))
 			},
 		},
 		modelStep{
@@ -272,6 +205,19 @@ func NewActivityModel(config *UserConfig) *ActivityModel {
 			},
 		},
 	}
+	// Set default value for activity
+	activityCfg := model.config.RunActivityConfig
+	model.options.Type = activities.RunActivity
+	if activityCfg != nil {
+		model.options.CommonSpeed = activityCfg.CommonSpeed
+		model.options.RareSpeed = activityCfg.RareSpeed
+		model.options.RareSpeedChance = activityCfg.RareSpeedChance
+		model.options.FadeDuration = time.Duration(activityCfg.FadeDuration) * time.Second
+		model.options.FadeFraction = activityCfg.FadeFraction
+	}
+	// Set default value for start time
+	model.options.Start, _ = strToTimestamp("01.01.2023 00:00:00")
+	//
 	return model
 }
 
