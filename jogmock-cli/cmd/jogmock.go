@@ -53,9 +53,6 @@ func (args *Arguments) LoadConfig() (*UserConfig, error) {
 		return nil, err
 	}
 
-	if config.StravaConfig == nil {
-		return nil, errors.New("currently only strava is supported so it must exist in the config")
-	}
 	return config, nil
 }
 
@@ -139,17 +136,6 @@ func strToTimestamp(val string) (time.Time, error) {
 	return t.Add(-time.Second * time.Duration(offset)), nil
 }
 
-// func strIsTime(val string) error {
-// 	if val == "" {
-// 		return errors.New("input time as DD.MM.YYYY HH:MM:SS")
-// 	}
-// 	_, err := strToTimestamp(val)
-// 	if err != nil {
-// 		return errors.New("input time as DD.MM.YYYY HH:MM:SS, error: " + err.Error())
-// 	}
-// 	return err
-// }
-
 const (
 	OkPrefix   = "[+]"
 	ErrPrefix  = "[-]"
@@ -218,6 +204,7 @@ func NewActivityModel(config *UserConfig) *ActivityModel {
 	// Set default value for start time
 	model.options.Start, _ = strToTimestamp("01.01.2023 00:00:00")
 	//
+
 	return model
 }
 
