@@ -45,3 +45,9 @@ After configuring the reCAPTCHA token and login info, jogmock will cache it and 
 
 ## Help
 The `run_activity` and `ride_activity` configs specify options used to generate the speed during an activity. You just need to specify the desired speed and `jogmock` will generate everything automatically, and these parameters can be used to fine-tune the generation in order for it to look as real (to you) as possible. Proper description of each option is specified in the example config.
+
+# Build
+To build the JogMock CLI, run the following command from the root of the project:
+
+```bash
+go build .\jogmock-cli\cmd\

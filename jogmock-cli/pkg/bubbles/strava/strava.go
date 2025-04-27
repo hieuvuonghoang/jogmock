@@ -1,14 +1,19 @@
 package strava
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"os"
+	"path/filepath"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/google/uuid"
 	bubblesCommon "github.com/mritd/bubbles/common"
 	"github.com/renbou/jogmock/activities"
+	"github.com/renbou/jogmock/fit-encoder/encoding"
 	promptBubble "github.com/renbou/jogmock/jogmock-cli/pkg/bubbles/prompt"
 	"github.com/renbou/jogmock/strava-mock/stravapi"
 )
@@ -32,6 +37,8 @@ type Model struct {
 
 	builtActivity     bool
 	initializedClient bool
+	buildingFitFile   bool
+	savedFitFile      bool
 	uploading         bool
 	uploaded          bool
 	recaptchaPrompt   *promptBubble.Model
@@ -63,6 +70,7 @@ type msg int
 const (
 	viewErrMsg msg = iota
 	saveActivityMsg
+	saveFitMsg
 	initApiClientMsg
 	uploadActivityMsg
 	uploadedActivityMsg
@@ -74,6 +82,10 @@ func viewErr() tea.Msg {
 
 func saveActivity() tea.Msg {
 	return saveActivityMsg
+}
+
+func saveFit() tea.Msg {
+	return saveFitMsg
 }
 
 func initApiClient() tea.Msg {
@@ -130,9 +142,41 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.err != nil {
 			return m, viewErr
 		}
-		m.initializedClient = true
-		m.uploading = true
-		return m, uploadActivity
+		// m.initializedClient = true
+		m.buildingFitFile = true
+		return m, saveFit
+	case saveFitMsg:
+		fitFile, err := m.apiClient.BuildFitFile(m.activity)
+		if err != nil {
+			m.err = fmt.Errorf("error while build fit file: %v", err)
+			return m, viewErr
+		}
+		activityBuffer := new(bytes.Buffer)
+		encoder := encoding.NewEncoder(activityBuffer, encoding.BigEndian)
+		if err := encoder.Encode(fitFile); err != nil {
+			m.err = fmt.Errorf("error while encoding fit file: %v", err)
+			return m, viewErr
+		}
+		randomUUID, err := uuid.NewRandom()
+		if err != nil {
+			m.err = fmt.Errorf("error while randomActivityUUID: %v", err)
+			return m, viewErr
+		}
+		randomFileName := randomUUID.String() + ".fit"
+		outputDir := "output"
+		err = os.MkdirAll(outputDir, os.ModePerm)
+		if err != nil {
+			m.err = fmt.Errorf("error while mkdir %v: %v", outputDir, err)
+			return m, viewErr
+		}
+		savePath := filepath.Join(outputDir, randomFileName) // optional: define a save directory
+		err = os.WriteFile(savePath, activityBuffer.Bytes(), 0644)
+		if err != nil {
+			m.err = fmt.Errorf("error while saving .fit file: %v", err)
+			return m, viewErr
+		}
+		m.savedFitFile = true
+		return m, bubblesCommon.Done
 	case uploadActivityMsg:
 		m.err = m.apiClient.UploadActivity(m.activity)
 		if m.err != nil {
@@ -195,6 +239,15 @@ func (m *Model) View() string {
 	if m.uploaded {
 		lines = append(lines,
 			bubblesCommon.FontColor(OkPrefix+" Uploaded activity, check your Strava!", ColorInfo))
+	}
+
+	if m.buildingFitFile {
+		lines = append(lines,
+			bubblesCommon.FontColor(OkPrefix+" Building fit activity to save local...", ColorInfo))
+	}
+	if m.savedFitFile {
+		lines = append(lines,
+			bubblesCommon.FontColor(OkPrefix+" Save fit file done!", ColorInfo))
 	}
 
 	if m.err != nil {

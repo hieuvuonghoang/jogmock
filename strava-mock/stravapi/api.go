@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/renbou/jogmock/activities"
 	"github.com/renbou/jogmock/fit-encoder/encoding"
+	"github.com/renbou/jogmock/fit-encoder/fit"
 	"github.com/renbou/jogmock/strava-mock/internal/stravafit"
 )
 
@@ -61,6 +62,22 @@ func NewClient(config *ApiConfig) (*ApiClient, error) {
 	client.ApiConfig = *config
 	client.client = restyClient
 	return client, nil
+}
+
+func (api *ApiClient) BuildFitFile(activity *activities.Activity) (*fit.FitFile, error) {
+	a := stravafit.StravaActivity{
+		AppVersion:         api.internalAppVersion,
+		MobileAppVersion:   api.MobileAppVersion,
+		DeviceManufacturer: api.DeviceManufacturer,
+		DeviceModel:        api.DeviceModel,
+		DeviceOsVersion:    strconv.Itoa(api.DeviceOsVersion),
+		Activity:           activity,
+	}
+	fitFile, err := a.BuildFitFile()
+	if err != nil {
+		return nil, err
+	}
+	return fitFile, nil
 }
 
 func (api *ApiClient) UploadActivity(activity *activities.Activity) error {
