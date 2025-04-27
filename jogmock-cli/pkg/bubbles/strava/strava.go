@@ -100,9 +100,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		encoder := json.NewEncoder(file)
 		encoder.SetIndent("", "  ")
-		convertedRecords := m.activity.ConvertRecordsToDegrees()
-		// records := m.activity.Records()
-		m.err = encoder.Encode(convertedRecords)
+		records := m.activity.Records()
+		m.err = encoder.Encode(records)
 		if m.err != nil {
 			return m, viewErr
 		}
