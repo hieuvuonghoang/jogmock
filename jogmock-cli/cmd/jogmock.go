@@ -359,7 +359,7 @@ func run(cmd *cobra.Command, args []string) {
 	for _, user := range users {
 		fmt.Println(bubblesCommon.FontColor(OkPrefix+" User: "+user, ColorInfo))
 		for cur := from.AddDate(0, 0, 0); cur.Unix() < to.Unix(); cur = cur.AddDate(0, 0, 1) {
-			fmt.Println(bubblesCommon.FontColor(OkPrefix+" \tCurrent: "+cur.Format("02/01/2006"), ColorInfo))
+			fmt.Println(bubblesCommon.FontColor(OkPrefix+" \tDay: "+cur.Format("02/01/2006"), ColorInfo))
 			speedRandomValue := speed.Min + rand.Float64()*(speed.Max-speed.Min)
 			fmt.Println(bubblesCommon.FontColor(OkPrefix+fmt.Sprintf(" \t\tSpeed: %.3f", speedRandomValue), ColorInfo))
 			gpxFileRandomValue := rand.Intn(len(gpxFiles))
