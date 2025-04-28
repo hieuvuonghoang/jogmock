@@ -1,0 +1,33 @@
+package main
+
+import (
+"fmt"
+"math"
+)
+
+// Convert decimal degrees to semicircles
+func decimalDegreesToSemicircles(decimalDegrees float64) int32 {
+return int32(decimalDegrees * (math.Pow(2, 31) / 180))
+}
+
+// Convert semicircles to decimal degrees
+func semicirclesToDecimalDegrees(semicircles int32) float64 {
+return float64(semicircles) * 180 / math.Pow(2, 31)
+}
+
+func main() {
+latitudeDD := 37.7749
+longitudeDD := -122.4194
+
+latitudeSemicircles := decimalDegreesToSemicircles(latitudeDD)
+longitudeSemicircles := decimalDegreesToSemicircles(longitudeDD)
+
+fmt.Printf("Latitude in semicircles: %d\n", latitudeSemicircles)
+fmt.Printf("Longitude in semicircles: %d\n", longitudeSemicircles)
+
+latitudeDDConverted := semicirclesToDecimalDegrees(latitudeSemicircles)
+longitudeDDConverted := semicirclesToDecimalDegrees(longitudeSemicircles)
+
+fmt.Printf("Converted Latitude in decimal degrees: %f\n", latitudeDDConverted)
+fmt.Printf("Converted Longitude in decimal degrees: %f\n", longitudeDDConverted)
+}
