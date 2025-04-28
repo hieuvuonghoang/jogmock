@@ -81,17 +81,6 @@ func (api *ApiClient) UploadActivity(activity *activities.Activity) error {
 		return err
 	}
 
-	// byteArray, err := fitFile.ToBytes(encoding.BigEndian)
-	// if err != nil {
-	// 	return fmt.Errorf("error while convert fit file to byte: %v", err)
-	// }
-
-	// // Save the fit file locally before uploading
-	// err = saveFitFileLocally(byteArray, "activity.fit")
-	// if err != nil {
-	// 	return fmt.Errorf("error while saving fit file locally: %v", err)
-	// }
-
 	activityBuffer := new(bytes.Buffer)
 	encoder := encoding.NewEncoder(activityBuffer, encoding.BigEndian)
 	if err := encoder.Encode(fitFile); err != nil {
