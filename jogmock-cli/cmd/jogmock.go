@@ -433,7 +433,7 @@ func run(cmd *cobra.Command, args []string) {
 			// Loại bỏ phần mở rộng (extension)
 			fileNameWithoutExt := strings.TrimSuffix(fileName, filepath.Ext(fileName))
 
-			savePath := fmt.Sprintf("output/%v/START_%v-SPEED_%.0f-GPX_%v.fit", user, cur.Format("02_01_2006"), speedRandomValue, fileNameWithoutExt)
+			savePath := fmt.Sprintf("output/%v/START_%v%v-SPEED_%.0f-GPX_%v.fit", user, cur.In(time.Local).Format("02012006"), start.In(time.Local).Format("150405"), speedRandomValue, fileNameWithoutExt)
 
 			// Tạo thư mục nếu chưa tồn tại
 			dir := filepath.Dir(savePath)
