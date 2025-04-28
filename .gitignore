@@ -1,8 +1,5 @@
 .vscode/
 .token-cache
-config.yml
-[*].exe
-[*].gpx
 
 # GoReleaser
 dist/

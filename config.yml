@@ -1,0 +1,26 @@
+users:
+  - hieuvh
+date_time:
+  from: "28.04.2025"
+  to: "28.04.2025"
+start_time:
+  from: "18:05:00"
+  to: "18:10:00"
+speed:
+  min: 6
+  max: 8
+run_activity:
+  common_speed_options:
+    slope: 2
+    amplitude: 4.5
+    minduration: 20
+    maxduration: 50
+  rare_speed_options:
+    slope: 4
+    amplitude: 7
+    minduration: 15
+    maxduration: 30
+  rare_speed_chance: 0.2
+  fade_duration: 45
+  fade_fraction: 0.5
+ride_activity: null
