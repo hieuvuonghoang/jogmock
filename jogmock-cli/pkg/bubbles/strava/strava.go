@@ -37,6 +37,26 @@ func (m *Model) Init() tea.Cmd {
 	return nil
 }
 
+func (m *Model) SetActivity(activity *activities.Activity) {
+	m.activity = activity
+}
+
+func (m *Model) BuildActivity() error {
+	// read and unmarshal the actual file
+	gpxFile, err := os.Open(*m.GpxFilePath)
+	if err != nil {
+		return err
+	}
+	defer gpxFile.Close()
+
+	b, err := ioutil.ReadAll(gpxFile)
+	if err != nil {
+		return err
+	}
+
+	return m.activity.BuildFromGPX(b)
+}
+
 func (m *Model) buildActivity() error {
 	// read and unmarshal the actual file
 	gpxFile, err := os.Open(*m.GpxFilePath)

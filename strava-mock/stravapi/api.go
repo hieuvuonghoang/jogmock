@@ -63,25 +63,6 @@ func NewClient(config *ApiConfig) (*ApiClient, error) {
 	return client, nil
 }
 
-// func saveFitFileLocally(fitFile []byte, filename string) error {
-// 	// Create a directory to save the fit file if it doesn't exist
-// 	if _, err := os.Stat("fit_files"); os.IsNotExist(err) {
-// 		err = os.Mkdir("fit_files", 0755)
-// 		if err != nil {
-// 			return err
-// 		}
-// 	}
-
-// 	// Save the fit file to the specified filename
-// 	filePath := fmt.Sprintf("fit_files/%s", filename)
-// 	err := os.WriteFile(filePath, fitFile, 0644)
-// 	if err != nil {
-// 		return err
-// 	}
-
-// 	return nil
-// }
-
 func (api *ApiClient) UploadActivity(activity *activities.Activity) error {
 	if api.Token == "" {
 		return ErrUnauthorized

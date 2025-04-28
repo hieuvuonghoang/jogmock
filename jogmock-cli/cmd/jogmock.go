@@ -1,10 +1,14 @@
 package main
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"io"
+	"math/rand"
 	"os"
-	"strconv"
+	"path/filepath"
+	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -13,8 +17,10 @@ import (
 	bubblesCommon "github.com/mritd/bubbles/common"
 	selectorBubble "github.com/mritd/bubbles/selector"
 	"github.com/renbou/jogmock/activities"
+	"github.com/renbou/jogmock/fit-encoder/encoding"
 	autoPromptBubble "github.com/renbou/jogmock/jogmock-cli/pkg/bubbles/autoprompt"
 	promptBubble "github.com/renbou/jogmock/jogmock-cli/pkg/bubbles/prompt"
+	"github.com/renbou/jogmock/jogmock-cli/pkg/bubbles/strava"
 	stravaBubble "github.com/renbou/jogmock/jogmock-cli/pkg/bubbles/strava"
 	"github.com/renbou/jogmock/strava-mock/stravapi"
 	"github.com/spf13/cobra"
@@ -28,7 +34,26 @@ type activityConfig struct {
 	FadeFraction    float64                  `yaml:"fade_fraction"`
 }
 
+type dateTimeConfig struct {
+	From string `yaml:"from"`
+	To   string `yaml:"to"`
+}
+
+type speedConfig struct {
+	Max float64 `yaml:"max"`
+	Min float64 `yaml:"min"`
+}
+
+type startTimeConfig struct {
+	From string `yaml:"from"`
+	To   string `yaml:"to"`
+}
+
 type UserConfig struct {
+	UsersConfig        []string            `yaml:"users"`
+	DateTimeConfig     *dateTimeConfig     `yaml:"date_time"`
+	StartTimeConfig    *startTimeConfig    `yaml:"start_time"`
+	SpeedConfig        *speedConfig        `yaml:"speed"`
 	StravaConfig       *stravapi.ApiConfig `yaml:"strava"`
 	RunActivityConfig  *activityConfig     `yaml:"run_activity"`
 	RideActivityConfig *activityConfig     `yaml:"ride_activity"`
@@ -51,6 +76,38 @@ func (args *Arguments) LoadConfig() (*UserConfig, error) {
 	config := new(UserConfig)
 	if err := decoder.Decode(config); err != nil {
 		return nil, err
+	}
+
+	if config.UsersConfig == nil {
+		return nil, errors.New("users config is null or empty")
+	}
+
+	if config.DateTimeConfig == nil {
+		return nil, errors.New("date_time config is null")
+	}
+
+	if config.DateTimeConfig.From == "" {
+		return nil, errors.New("date_time from config is empty")
+	}
+
+	if config.DateTimeConfig.To == "" {
+		return nil, errors.New("date_time to config is empty")
+	}
+
+	from, err := strToTimestamp(config.DateTimeConfig.From + " 00:00:00")
+	if err != nil {
+		return nil, err
+	}
+	to, err := strToTimestamp(config.DateTimeConfig.To + " 00:00:00")
+	if err != nil {
+		return nil, err
+	}
+	if from.Unix() > to.Unix() {
+		return nil, errors.New("date_time from > to")
+	}
+
+	if config.SpeedConfig == nil {
+		return nil, errors.New("speed config to config is empty")
 	}
 
 	return config, nil
@@ -144,39 +201,13 @@ const (
 	ColorError = "#d32f2f"
 )
 
-func NewActivityModel(config *UserConfig) *ActivityModel {
+func NewActivityModel(config *UserConfig, gpxFilePath string, speed float64, start time.Time) *ActivityModel {
+
 	model := &ActivityModel{
 		args:   &arguments,
 		config: config,
 	}
 	model.steps = []simpleModel{
-		modelStep{
-			&autoPromptBubble.Model{
-				Prompt:            bubblesCommon.FontColor("Path to GPX file: ", promptBubble.ColorPrompt),
-				ValidateOkPrefix:  OkPrefix,
-				ValidateErrPrefix: ErrPrefix,
-			},
-			func(value interface{}) {
-				_, model.gpxFilePath = autoPromptBubble.UserExpand(value.(string))
-			},
-		},
-		modelStep{
-			&promptBubble.Model{
-				Prompt: bubblesCommon.FontColor("Desired speed (km/h) as float: ", promptBubble.ColorPrompt),
-				ValidateFunc: func(val string) error {
-					_, err := strconv.ParseFloat(val, 64)
-					if err != nil {
-						return errors.New("input speed as a float, error: " + err.Error())
-					}
-					return nil
-				},
-				ValidateOkPrefix:  OkPrefix,
-				ValidateErrPrefix: ErrPrefix,
-			},
-			func(value interface{}) {
-				model.options.DesiredSpeed, _ = strconv.ParseFloat(value.(string), 64)
-			},
-		},
 		modelStep{
 			&stravaBubble.Model{
 				ActivityOptions: &model.options,
@@ -191,6 +222,10 @@ func NewActivityModel(config *UserConfig) *ActivityModel {
 			},
 		},
 	}
+	//
+	model.gpxFilePath = gpxFilePath
+	//
+	model.options.DesiredSpeed = speed
 	// Set default value for activity
 	activityCfg := model.config.RunActivityConfig
 	model.options.Type = activities.RunActivity
@@ -202,8 +237,7 @@ func NewActivityModel(config *UserConfig) *ActivityModel {
 		model.options.FadeFraction = activityCfg.FadeFraction
 	}
 	// Set default value for start time
-	model.options.Start, _ = strToTimestamp("01.01.2023 00:00:00")
-	//
+	model.options.Start = start
 
 	return model
 }
@@ -265,17 +299,167 @@ func run(cmd *cobra.Command, args []string) {
 		return
 	}
 
-	model := NewActivityModel(config)
-	prog := tea.NewProgram(model)
-	if err := prog.Start(); err != nil {
-		fmt.Println(ErrPrefix+" "+err.Error(), ColorError)
+	//
+	from, _ := strToTimestamp(config.DateTimeConfig.From + " 00:00:00")
+	to, _ := strToTimestamp(config.DateTimeConfig.To + " 00:00:00")
+	from = from.In(time.Local)
+	to = to.In(time.Local)
+	fmt.Println(bubblesCommon.FontColor(OkPrefix+" From: "+from.Format("02/01/2006")+" to: "+to.Format("02/01/2006"), ColorInfo))
+	//
+	speed := config.SpeedConfig
+	//
+	// Chỉ định đường dẫn thư mục
+	dir := "./gpxs" // Thay "path/to/your/folder" bằng đường dẫn thư mục của bạn
+	var gpxFiles []string
+
+	// Duyệt qua tất cả các tệp trong thư mục
+	err = filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		// Kiểm tra nếu tệp có phần mở rộng .gpx
+		if !info.IsDir() && strings.HasSuffix(info.Name(), ".gpx") {
+			gpxFiles = append(gpxFiles, path)
+		}
+		return nil
+	})
+
+	if err != nil {
+		fmt.Println(bubblesCommon.FontColor(ErrPrefix+" Load gpx file in folder ./gpxs: "+err.Error(), ColorError))
 		return
 	}
 
-	if err := arguments.SaveConfig(model.config); err != nil {
-		fmt.Println(ErrPrefix+" Failed to save new config: "+err.Error(), ColorError)
+	if len(gpxFiles) == 0 {
+		fmt.Println(bubblesCommon.FontColor(ErrPrefix+" .gpx file not found in folder ./gpxs", ColorWarn))
 		return
 	}
+	nowStr := time.Now().In(time.Local).Format("02.01.2006")
+	fmt.Println(bubblesCommon.FontColor(OkPrefix+" Now: "+nowStr, ColorInfo))
+	startTimeFrom, err := strToTimestamp(nowStr + " " + config.StartTimeConfig.From)
+	if err != nil {
+		fmt.Println(bubblesCommon.FontColor(ErrPrefix+" Convert start_time_form error: "+err.Error(), ColorError))
+		return
+	}
+	startTimeTo, err := strToTimestamp(nowStr + " " + config.StartTimeConfig.To)
+	if err != nil {
+		fmt.Println(bubblesCommon.FontColor(ErrPrefix+" Convert start_time_to error: "+err.Error(), ColorError))
+		return
+	}
+	startTimeFrom = startTimeFrom.In(time.Local)
+	startTimeTo = startTimeTo.In(time.Local)
+
+	if startTimeFrom.Unix() > startTimeTo.Unix() {
+		fmt.Println(bubblesCommon.FontColor(ErrPrefix+" start_time_form > start_time_to", ColorError))
+		return
+	}
+
+	second := startTimeTo.Unix() - startTimeFrom.Unix()
+
+	users := config.UsersConfig
+	for _, user := range users {
+		fmt.Println(bubblesCommon.FontColor(OkPrefix+" User: "+user, ColorInfo))
+		for cur := from.AddDate(0, 0, 0); cur.Unix() < to.Unix(); cur = cur.AddDate(0, 0, 1) {
+			fmt.Println(bubblesCommon.FontColor(OkPrefix+" \tCurrent: "+cur.Format("02/01/2006"), ColorInfo))
+			speedRandomValue := speed.Min + rand.Float64()*(speed.Max-speed.Min)
+			fmt.Println(bubblesCommon.FontColor(OkPrefix+fmt.Sprintf(" \t\tSpeed: %.3f", speedRandomValue), ColorInfo))
+			gpxFileRandomValue := rand.Intn(len(gpxFiles))
+			fmt.Println(bubblesCommon.FontColor(OkPrefix+fmt.Sprintf(" \t\tGPX file: %v", gpxFiles[gpxFileRandomValue]), ColorInfo))
+			gpxFilePath := gpxFiles[gpxFileRandomValue]
+			secodeRandomValue := rand.Int63n(second)
+			fmt.Println(bubblesCommon.FontColor(OkPrefix+fmt.Sprintf(" \t\tSecodeRandomValue: %d", secodeRandomValue), ColorInfo))
+			start := startTimeFrom.Add(time.Duration(time.Duration(secodeRandomValue) * time.Second))
+			start = start.In(time.UTC)
+			fmt.Println(bubblesCommon.FontColor(OkPrefix+fmt.Sprintf(" \t\tStart (UTC): %v", start.Format("2006-01-02 15:04:05")), ColorInfo))
+			options := activities.ActivityOptions{
+				Name:         "Run",
+				Description:  "",
+				Type:         activities.RunActivity,
+				Start:        start,
+				DesiredSpeed: speedRandomValue,
+				CommonSpeed: &activities.SpeedOptions{
+					Slope:       config.RunActivityConfig.CommonSpeed.Slope,
+					Amplitude:   config.RunActivityConfig.CommonSpeed.Amplitude,
+					MinDuration: config.RunActivityConfig.CommonSpeed.MinDuration,
+					MaxDuration: config.RunActivityConfig.CommonSpeed.MaxDuration,
+				},
+				RareSpeed: &activities.SpeedOptions{
+					Slope:       config.RunActivityConfig.RareSpeed.Slope,
+					Amplitude:   config.RunActivityConfig.RareSpeed.Amplitude,
+					MinDuration: config.RunActivityConfig.RareSpeed.MinDuration,
+					MaxDuration: config.RunActivityConfig.RareSpeed.MaxDuration,
+				},
+				RareSpeedChance: config.RunActivityConfig.RareSpeedChance,
+				FadeDuration:    time.Duration(config.RunActivityConfig.FadeDuration) * time.Second,
+				FadeFraction:    config.RunActivityConfig.FadeFraction,
+			}
+
+			activity, err := activities.NewActivity(&options)
+
+			if err != nil {
+				fmt.Println(bubblesCommon.FontColor(ErrPrefix+" \t\tNew activity error: "+err.Error(), ColorWarn))
+				continue
+			}
+
+			strava := strava.Model{
+				ActivityOptions: &options,
+				GpxFilePath:     &gpxFilePath,
+			}
+
+			strava.SetActivity(activity)
+
+			err = strava.BuildActivity()
+
+			if err != nil {
+				fmt.Println(bubblesCommon.FontColor(ErrPrefix+" \t\tBuild activity error: "+err.Error(), ColorWarn))
+				continue
+			}
+
+			fitFile, err := stravapi.BuildFitFile(activity)
+			if err != nil {
+				fmt.Println(bubblesCommon.FontColor(ErrPrefix+" \t\tBuild fit file error: "+err.Error(), ColorWarn))
+				continue
+			}
+
+			activityBuffer := new(bytes.Buffer)
+			encoder := encoding.NewEncoder(activityBuffer, encoding.BigEndian)
+			if err := encoder.Encode(fitFile); err != nil {
+				fmt.Println(bubblesCommon.FontColor(ErrPrefix+" \t\tEncode fit file error: "+err.Error(), ColorWarn))
+				continue
+			}
+
+			// Lấy tên file từ đường dẫn
+			fileName := filepath.Base(gpxFiles[gpxFileRandomValue])
+
+			// Loại bỏ phần mở rộng (extension)
+			fileNameWithoutExt := strings.TrimSuffix(fileName, filepath.Ext(fileName))
+
+			savePath := fmt.Sprintf("output/%v/START_%v-SPEED_%.0f-GPX_%v.fit", user, cur.Format("02_01_2006"), speedRandomValue, fileNameWithoutExt)
+
+			// Tạo thư mục nếu chưa tồn tại
+			dir := filepath.Dir(savePath)
+			if err := os.MkdirAll(dir, os.ModePerm); err != nil {
+				fmt.Println(bubblesCommon.FontColor(ErrPrefix+" \t\tFailed to create directories: "+err.Error(), ColorWarn))
+				continue
+			}
+
+			// Ghi buffer vào file
+			outFile, err := os.Create(savePath)
+			if err != nil {
+				fmt.Println(bubblesCommon.FontColor(ErrPrefix+" \t\tFailed to create file: "+err.Error(), ColorWarn))
+				continue
+			}
+			defer outFile.Close()
+
+			if _, err := io.Copy(outFile, activityBuffer); err != nil {
+				fmt.Println(bubblesCommon.FontColor(ErrPrefix+" \t\tFailed to write file: "+err.Error(), ColorWarn))
+				continue
+			}
+
+			fmt.Println(bubblesCommon.FontColor(OkPrefix+fmt.Sprintf(" \t\tFit file: %v", savePath), ColorInfo))
+
+		}
+	}
+
 }
 
 func init() {
