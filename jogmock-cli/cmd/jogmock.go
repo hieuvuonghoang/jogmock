@@ -367,9 +367,10 @@ func run(cmd *cobra.Command, args []string) {
 			gpxFilePath := gpxFiles[gpxFileRandomValue]
 			secodeRandomValue := rand.Int63n(second)
 			fmt.Println(bubblesCommon.FontColor(OkPrefix+fmt.Sprintf(" \t\tSecodeRandomValue: %d", secodeRandomValue), ColorInfo))
-			start := startTimeFrom.Add(time.Duration(time.Duration(secodeRandomValue) * time.Second))
+			// startTimeFrom.Add(time.Duration(time.Duration(secodeRandomValue) * time.Second))
+			start, _ := strToTimestamp(fmt.Sprintf("%v %v", cur.Format("02.01.2006"), startTimeFrom.Add(time.Duration(time.Duration(secodeRandomValue)*time.Second)).Format("15:04:05")))
 			start = start.In(time.UTC)
-			fmt.Println(bubblesCommon.FontColor(OkPrefix+fmt.Sprintf(" \t\tStart (UTC): %v", start.Format("2006-01-02 15:04:05")), ColorInfo))
+			fmt.Println(bubblesCommon.FontColor(OkPrefix+fmt.Sprintf(" \t\tStart (Local): %v", start.In(time.Local).Format("2006-01-02 15:04:05")), ColorInfo))
 			options := activities.ActivityOptions{
 				Name:         "Run",
 				Description:  "",
