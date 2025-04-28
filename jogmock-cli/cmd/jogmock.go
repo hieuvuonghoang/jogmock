@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -358,7 +359,7 @@ func run(cmd *cobra.Command, args []string) {
 	users := config.UsersConfig
 	for _, user := range users {
 		fmt.Println(bubblesCommon.FontColor(OkPrefix+" User: "+user, ColorInfo))
-		for cur := from.AddDate(0, 0, 0); cur.Unix() < to.Unix(); cur = cur.AddDate(0, 0, 1) {
+		for cur := from.AddDate(0, 0, 0); cur.Unix() <= to.Unix(); cur = cur.AddDate(0, 0, 1) {
 			fmt.Println(bubblesCommon.FontColor(OkPrefix+" \tDay: "+cur.Format("02/01/2006"), ColorInfo))
 			speedRandomValue := speed.Min + rand.Float64()*(speed.Max-speed.Min)
 			fmt.Println(bubblesCommon.FontColor(OkPrefix+fmt.Sprintf(" \t\tSpeed: %.3f", speedRandomValue), ColorInfo))
@@ -457,6 +458,35 @@ func run(cmd *cobra.Command, args []string) {
 			}
 
 			fmt.Println(bubblesCommon.FontColor(OkPrefix+fmt.Sprintf(" \t\tFit file: %v", savePath), ColorInfo))
+
+			// Json File
+			savePathJson := fmt.Sprintf("output/%v/START_%v%v-SPEED_%.0f-GPX_%v.json", user, cur.In(time.Local).Format("02012006"), start.In(time.Local).Format("150405"), speedRandomValue, fileNameWithoutExt)
+
+			// Tạo thư mục nếu chưa tồn tại
+			dirJson := filepath.Dir(savePathJson)
+			if err := os.MkdirAll(dirJson, os.ModePerm); err != nil {
+				fmt.Println(bubblesCommon.FontColor(ErrPrefix+" \t\tFailed to create directories: "+err.Error(), ColorWarn))
+				continue
+			}
+
+			// Ghi buffer vào file
+			outFileJson, err := os.Create(savePathJson)
+			if err != nil {
+				fmt.Println(bubblesCommon.FontColor(ErrPrefix+" \t\tFailed to create file: "+err.Error(), ColorWarn))
+				continue
+			}
+			defer outFileJson.Close()
+
+			encoderJson := json.NewEncoder(outFileJson)
+			encoderJson.SetIndent("", "  ")
+			records := activity.Records()
+			err = encoderJson.Encode(records)
+			if err != nil {
+				fmt.Println(bubblesCommon.FontColor(ErrPrefix+" \t\tFailed to encode json file: "+err.Error(), ColorWarn))
+				continue
+			}
+
+			fmt.Println(bubblesCommon.FontColor(OkPrefix+fmt.Sprintf(" \t\tJson file: %v", savePathJson), ColorInfo))
 
 		}
 	}
