@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"strconv"
+	"path/filepath"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -28,10 +28,26 @@ type activityConfig struct {
 	FadeFraction    float64                  `yaml:"fade_fraction"`
 }
 
+type speedConfig struct {
+	Min float64 `yaml:"min"`
+	Max float64 `yaml:"max"`
+}
+
+type dateTimeConfig struct {
+	FromStr string `yaml:"from"`
+	ToStr   string `yaml:"to"`
+}
+
 type UserConfig struct {
+	Users              []string            `yaml:"users"`
+	Speed              *speedConfig        `yaml:"speed"`
+	DateTime           *dateTimeConfig     `yaml:"date_time"`
 	StravaConfig       *stravapi.ApiConfig `yaml:"strava"`
 	RunActivityConfig  *activityConfig     `yaml:"run_activity"`
 	RideActivityConfig *activityConfig     `yaml:"ride_activity"`
+	GpxFilePath        string
+	Start              time.Time
+	DesiredSpeed       float64
 }
 
 // Arguments represents the possible commmand-line arguments
@@ -56,6 +72,35 @@ func (args *Arguments) LoadConfig() (*UserConfig, error) {
 	if config.StravaConfig == nil {
 		return nil, errors.New("currently only strava is supported so it must exist in the config")
 	}
+
+	if config.DateTime == nil {
+		return nil, errors.New("date_time must exist in the config")
+	}
+
+	config.DateTime.FromStr = config.DateTime.FromStr + " 00:00:00"
+	config.DateTime.ToStr = config.DateTime.ToStr + " 00:00:00"
+
+	from, err := strToTimestamp(config.DateTime.FromStr)
+	if err != nil {
+		return nil, errors.New("unable to parse date_time.from: " + err.Error())
+	}
+	to, err := strToTimestamp(config.DateTime.ToStr)
+	if err != nil {
+		return nil, errors.New("unable to parse date_time.to: " + err.Error())
+	}
+
+	if from.Unix() > to.Unix() {
+		return nil, errors.New("date_time.from > date_time.to?")
+	}
+
+	if config.Users == nil {
+		return nil, errors.New("users must exist in the config")
+	}
+
+	if config.Speed == nil {
+		return nil, errors.New("speed must exist in the config")
+	}
+
 	return config, nil
 }
 
@@ -165,100 +210,6 @@ func NewActivityModel(config *UserConfig) *ActivityModel {
 	}
 	model.steps = []simpleModel{
 		modelStep{
-			&autoPromptBubble.Model{
-				Prompt:            bubblesCommon.FontColor("Path to GPX file: ", promptBubble.ColorPrompt),
-				ValidateOkPrefix:  OkPrefix,
-				ValidateErrPrefix: ErrPrefix,
-			},
-			func(value interface{}) {
-				_, model.gpxFilePath = autoPromptBubble.UserExpand(value.(string))
-			},
-		},
-		modelStep{
-			&selectorBubble.Model{
-				Data:           []interface{}{"Run", "Ride"},
-				HeaderFunc:     selectorBubble.DefaultHeaderFuncWithAppend("Type:"),
-				SelectedFunc:   selectorBubble.DefaultSelectedFuncWithIndex("[%d]"),
-				UnSelectedFunc: selectorBubble.DefaultUnSelectedFuncWithIndex(" %d."),
-				FooterFunc: func(m selectorBubble.Model, obj interface{}, gdIndex int) string {
-					return ""
-				},
-				FinishedFunc: func(selected interface{}) string {
-					return bubblesCommon.FontColor(OkPrefix+" Type: ", selectorBubble.ColorFinished) +
-						fmt.Sprintln(selected)
-				},
-			},
-			func(value interface{}) {
-				text := value.(string)
-				var activityCfg *activityConfig
-				if text == "Run" {
-					model.options.Type = activities.RunActivity
-					activityCfg = model.config.RunActivityConfig
-				} else {
-					model.options.Type = activities.RideActivity
-					activityCfg = model.config.RideActivityConfig
-				}
-
-				if activityCfg != nil {
-					model.options.CommonSpeed = activityCfg.CommonSpeed
-					model.options.RareSpeed = activityCfg.RareSpeed
-					model.options.RareSpeedChance = activityCfg.RareSpeedChance
-					model.options.FadeDuration = time.Duration(activityCfg.FadeDuration) * time.Second
-					model.options.FadeFraction = activityCfg.FadeFraction
-				}
-			},
-		},
-		modelStep{
-			&promptBubble.Model{
-				Prompt:            bubblesCommon.FontColor("Name: ", promptBubble.ColorPrompt),
-				ValidateFunc:      promptBubble.VFNotBlank,
-				ValidateOkPrefix:  OkPrefix,
-				ValidateErrPrefix: ErrPrefix,
-			},
-			func(value interface{}) {
-				model.options.Name = value.(string)
-			},
-		},
-		modelStep{
-			&promptBubble.Model{
-				Prompt:            bubblesCommon.FontColor("Description: ", promptBubble.ColorPrompt),
-				ValidateOkPrefix:  OkPrefix,
-				ValidateErrPrefix: ErrPrefix,
-			},
-			func(value interface{}) {
-				model.options.Description = value.(string)
-			},
-		},
-		modelStep{
-			&promptBubble.Model{
-				Prompt: bubblesCommon.FontColor("Start time (DD.MM.YYYY HH:MM:SS): ",
-					promptBubble.ColorPrompt),
-				ValidateFunc:      strIsTime,
-				ValidateOkPrefix:  OkPrefix,
-				ValidateErrPrefix: ErrPrefix,
-			},
-			func(value interface{}) {
-				model.options.Start, _ = strToTimestamp(value.(string))
-			},
-		},
-		modelStep{
-			&promptBubble.Model{
-				Prompt: bubblesCommon.FontColor("Desired speed (km/h) as float: ", promptBubble.ColorPrompt),
-				ValidateFunc: func(val string) error {
-					_, err := strconv.ParseFloat(val, 64)
-					if err != nil {
-						return errors.New("input speed as a float, error: " + err.Error())
-					}
-					return nil
-				},
-				ValidateOkPrefix:  OkPrefix,
-				ValidateErrPrefix: ErrPrefix,
-			},
-			func(value interface{}) {
-				model.options.DesiredSpeed, _ = strconv.ParseFloat(value.(string), 64)
-			},
-		},
-		modelStep{
 			&stravaBubble.Model{
 				ActivityOptions: &model.options,
 				ApiConfig:       model.config.StravaConfig,
@@ -272,6 +223,24 @@ func NewActivityModel(config *UserConfig) *ActivityModel {
 			},
 		},
 	}
+	model.gpxFilePath = config.GpxFilePath
+
+	var activityCfg *activityConfig
+	model.options.Type = activities.RunActivity
+	activityCfg = model.config.RunActivityConfig
+	if activityCfg != nil {
+		model.options.CommonSpeed = activityCfg.CommonSpeed
+		model.options.RareSpeed = activityCfg.RareSpeed
+		model.options.RareSpeedChance = activityCfg.RareSpeedChance
+		model.options.FadeDuration = time.Duration(activityCfg.FadeDuration) * time.Second
+		model.options.FadeFraction = activityCfg.FadeFraction
+	}
+
+	model.options.Name = "Run"
+
+	model.options.Start = model.config.Start
+
+	model.options.DesiredSpeed = model.config.DesiredSpeed
 	return model
 }
 
@@ -331,18 +300,62 @@ func run(cmd *cobra.Command, args []string) {
 		fmt.Println(bubblesCommon.FontColor(ErrPrefix+" Unable to load config: "+err.Error(), ColorError))
 		return
 	}
-
-	model := NewActivityModel(config)
-	prog := tea.NewProgram(model)
-	if err := prog.Start(); err != nil {
-		fmt.Println(ErrPrefix+" "+err.Error(), ColorError)
-		return
+	//
+	from, _ := strToTimestamp(config.DateTime.FromStr)
+	to, _ := strToTimestamp(config.DateTime.ToStr)
+	//
+	files, err := filepath.Glob("gpxs/*.gpx")
+	//
+	users := config.Users
+	for _, user := range users {
+		fmt.Println(bubblesCommon.FontColor(OkPrefix+" UserName: "+user, ColorInfo))
+		for cur := from.In(time.Local); cur.Unix() <= to.In(time.Local).Unix(); cur = cur.AddDate(0, 0, 1) {
+			fmt.Println(bubblesCommon.FontColor(OkPrefix+"  DateTime: "+cur.Format("01-02-2006"), ColorInfo))
+		}
 	}
 
-	if err := arguments.SaveConfig(model.config); err != nil {
-		fmt.Println(ErrPrefix+" Failed to save new config: "+err.Error(), ColorError)
-		return
-	}
+	// speed := config.Speed
+	// fmt.Println(speed.Max)
+	// fmt.Println(speed.Min)
+
+	// if config == nil {
+	// 	fmt.Println("Config is null")
+	// 	return
+	// }
+
+	// files, err := filepath.Glob("gpxs/*.gpx")
+	// if err != nil {
+	// 	fmt.Println("Error:", err)
+	// 	return
+	// }
+
+	// for _, file := range files {
+	// 	fmt.Println(file)
+	// 	config.GpxFilePath = file
+	// 	config.DesiredSpeed = 9.41
+	// 	config.Start, _ = strToTimestamp("27.04.2025 05:03:30")
+	// 	model := NewActivityModel(config)
+	// 	prog := tea.NewProgram(model)
+	// 	if err := prog.Start(); err != nil {
+	// 		fmt.Println(ErrPrefix+" "+err.Error(), ColorError)
+	// 		return
+	// 	}
+	// }
+
+	// for i := 0; i < 2; i++ {
+	// 	fmt.Println(i)
+	// 	model := NewActivityModel(config)
+	// 	prog := tea.NewProgram(model)
+	// 	if err := prog.Start(); err != nil {
+	// 		fmt.Println(ErrPrefix+" "+err.Error(), ColorError)
+	// 		return
+	// 	}
+	// }
+
+	// if err := arguments.SaveConfig(model.config); err != nil {
+	// 	fmt.Println(ErrPrefix+" Failed to save new config: "+err.Error(), ColorError)
+	// 	return
+	// }
 }
 
 func init() {
